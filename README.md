@@ -29,21 +29,21 @@ sudo pip install -u selenium
 The first time you use InstaRaider for a specific username, it will download all the photos on that user's profile.
 On subsequent uses, InstaRaider will only download new photos (unless you rename or remove the photos from the Images directory for that specific username). 
 ```python
-usage: instaRaider.py [-h] [-n imageCount] USERNAME ./DIRECTORY/TO/SAVE/IMAGES
+usage: instaRaider.py [-h] [-n imageCount] ~/JSON/FILE/CONTAINING/USERNAMES ./DIRECTORY/TO/SAVE/IMAGES
 ```
 
 ### Output:
 ```
-$ python instaRaider.py -n 100 username ./images/username
+$ python instaRaider.py -n 100 usersnames.json ./instagram/images
 username has 263 posts on Instagram.
 The first 100 of them will be downloaded.
 Loading Instagram profile...
-Saving photos to ./images/username
+Saving photos to ./instagram/images/username
 Downloaded file 1/100 (123.jpg).
 Downloaded file 2/100 (456.jpg).
 ...
 Downloaded file 100/100 (789.jpg).
-Saved 100 files to ./images/username
+Saved 100 files to ./instagram/images/username
 ```
 ### Multiprocessing performance
 After 3 independent tests ran on the same machine, for a profile with 565 posts, the script took the following time to run depending on the number of processes ran:

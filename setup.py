@@ -9,5 +9,5 @@ setup(
             'instaraider = instaraider:main',
         ],
     ),
-    install_requires=['requests', 'selenium'],
+    install_requires=['requests', 'selenium', 'awesome-slugify'],
 )

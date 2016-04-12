@@ -25,10 +25,10 @@ import selenium.webdriver as webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions
-from selenium.common.exceptions import NoSuchElementException
 import json
 from datetime import datetime
 from multiprocessing import Process
+from slugify import slugify
 try:
     from gi.repository import GExiv2
 except ImportError:
@@ -71,7 +71,7 @@ class InstaRaider(object):
 
     def __init__(self, username, directory, num_to_download=None,
                  log_level='info', use_metadata=False, get_videos=False,
-                 process_number=100):
+                 process_number=100, login_creds=tuple()):
         self.username = username
         self.profile_url = self.get_url(username)
         self.directory = directory
@@ -86,6 +86,7 @@ class InstaRaider(object):
         self.set_num_posts(num_to_download)
         self.setup_webdriver()
         self.process_number = process_number
+        self.login_creds = login_creds
 
     def __del__(self):
         if self.webdriver:
@@ -99,7 +100,7 @@ class InstaRaider(object):
         self.num_to_download = num_to_download
 
     def setup_logging(self, level=logging.INFO):
-        self.logger = logging.getLogger('instaraider')
+        self.logger = logging.getLogger('instaraider.{}'.format(slugify(self.username, separator='_')))
         self.logger.addHandler(logging.StreamHandler())
         self.logger.setLevel(logging.INFO)
 
@@ -131,13 +132,22 @@ class InstaRaider(object):
                  level=logging.WARN)
         driver.get(self.get_url('accounts/login/'))
 
-        # Wait until user has been successfully logged in and redirceted
-        # to his/her feed.
-        WebDriverWait(driver, 60).until(
-            expected_conditions.presence_of_element_located(
-                (By.CSS_SELECTOR, '.-cx-PRIVATE-FeedPage__feed'),
+        if self.login_creds and len(self.login_creds) == 2:
+            username = driver.find_element_by_name('username')
+            username.send_keys(self.login_creds[0])
+            password = driver.find_element_by_name('password')
+            password.send_keys(self.login_creds[1])
+
+            form = driver.find_element_by_tag_name('form')
+            form.submit()
+        else:
+            # Wait until user has been successfully logged in and redirceted
+            # to his/her feed.
+            WebDriverWait(driver, 60).until(
+                expected_conditions.presence_of_element_located(
+                    (By.CSS_SELECTOR, '.-cx-PRIVATE-FeedPage__feed'),
+                )
             )
-        )
 
         self.log('User successfully logged in.', level=logging.INFO)
         self.set_num_posts()  # Have to set this again
@@ -160,13 +170,8 @@ class InstaRaider(object):
         driver.implicitly_wait(self.PAUSE)
 
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        try:
-            el = driver.find_element_by_css_selector(
-                '.-cx-PRIVATE-ProfilePage__advisoryMessageHeader'
-            )
-        except NoSuchElementException:
-            pass
-        else:
+        prv_msg = 'This Account is Private'
+        if prv_msg in driver.page_source:
             self.log_in_user()
 
         if (num_to_download > 24):
@@ -208,8 +213,8 @@ class InstaRaider(object):
 
         if not self.num_posts:
             self.log('User', self.username, 'has no photos to download.',
-                     level=logging.ERROR)
-            return False
+                     level=logging.WARN)
+            return True
         return True
 
     def download_photos(self):
@@ -445,11 +450,13 @@ def gen_dict_extract(key, var):
 def main():
     # parse arguments
     parser = argparse.ArgumentParser(description='InstaRaider')
-    parser.add_argument('username', help='Instagram username')
-    parser.add_argument('directory', help='Where to save the images')
+    parser.add_argument('inputfile', help='Path for json file containing array of usernames to download photos for')
+    parser.add_argument('directory', help='Path for output directory')
     parser.add_argument('-n', '--num-to-download',
                         help='Number of posts to download', type=int)
     parser.add_argument('-l', '--log-level', help="Log level", default='info')
+    parser.add_argument('-u', '--login-username', help="Login Username for Instagram")
+    parser.add_argument('-w', '--login-password', help="Login Password for Instagram")
     parser.add_argument('-m', '--add_metadata',
                         help=("Add metadata (caption/date) from Instagram "
                               "post into downloaded images' exif tags "
@@ -463,21 +470,27 @@ def main():
                         action='store', dest='process_number',
                         type=int, default=100)
     args = parser.parse_args()
-    username = args.username
-    directory = op.expanduser(args.directory)
+    base_directory = op.expanduser(args.directory)
+    inputfile = op.expanduser(args.inputfile)
 
-    raider = InstaRaider(username, directory,
-                         num_to_download=args.num_to_download,
-                         log_level=args.log_level,
-                         use_metadata=args.use_metadata,
-                         get_videos=args.get_videos,
-                         process_number=args.process_number)
+    json_file = open(inputfile)
+    following = json.loads(json_file.read())
+    for username in following:
+        directory = op.join(base_directory, username)
+        os.makedirs(directory, exist_ok=True)
+        raider = InstaRaider(username, directory,
+                             num_to_download=args.num_to_download,
+                             log_level=args.log_level,
+                             use_metadata=args.use_metadata,
+                             get_videos=args.get_videos,
+                             process_number=args.process_number,
+                             login_creds=(args.login_username, args.login_password))
 
-    if not raider.validate():
-        return
+        if not raider.validate():
+            return
 
-    raider.download_photos()
-    raider.download_videos()
+        raider.download_photos()
+        raider.download_videos()
 
 
 if __name__ == '__main__':
